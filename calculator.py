@@ -2,6 +2,9 @@ from errors import *
 
 # TOKENS
 INTEGER, OPERATOR, EOF, SPACE = 'INTEGER', 'OPERATOR', 'EOF', 'SPACE'
+BRACKET_LEFT, BRACKET_RIGHT = 'BRACKET_LEFT', 'BRACKET_RIGHT'
+
+OPERATORS = ('+', '-', '*', '/')
 
 # Language
 lang = 'en'
@@ -19,15 +22,11 @@ class Token(object):
         return self.__str__()
 
 
-class Interpreter(object):
+class Lexer(object):
     def __init__(self, text):
         self.text = text
-        self.current_token = None
         self.pos = 0
         self.current_char = self.text[self.pos]
-
-    def error(self, error):
-        raise Exception(error)
 
     def advance(self):
         self.pos += 1
@@ -56,50 +55,103 @@ class Interpreter(object):
             if self.current_char.isdigit():
                 return Token(INTEGER, self.integer())
 
-            if self.current_char in '+-*/':
+            if self.current_char in OPERATORS:
                 char = self.current_char
                 self.advance()
                 return Token(OPERATOR, char)
 
-            self.error(PARSING_ERROR[lang])
+            if self.current_char == '(':
+                self.advance()
+                return Token(BRACKET_LEFT, '(')
+
+            if self.current_char == ')':
+                self.advance()
+                return Token(BRACKET_RIGHT, ')')
+
+            error(INVALID_CHAR[lang])
 
         return Token(EOF, None)
 
-    def term(self):
+
+class Interpreter(object):
+    def __init__(self, lexer):
+        self.lexer = lexer
+        self.current_token = None
+
+    def factor(self):
         result = self.current_token
         self.eat(INTEGER)
         return result.value
 
+    def staple(self):
+        """staple: factor|expr"""
+
+        if self.current_token.type == BRACKET_LEFT:
+            result = self.expr()
+        else:
+            result = self.factor()
+
+        return result
+
+    def term(self):
+        """term: factor ((mult|div factor))*"""
+
+        result = self.staple()
+        while self.current_token.value in ('*', '/'):
+            op = self.current_token
+            self.eat(OPERATOR)
+
+            right = self.staple()
+            match op.value:
+                case '*':
+                    result *= right
+                case '/':
+                    result /= right
+                    if result == int(result):
+                        result = int(result)
+        return result
+
     def eat(self, token_type):
         if self.current_token.type != token_type:
-            self.error(PARSING_ERROR[lang])
-        self.current_token = self.get_next_token()
+            error(INVALID_SYNTAX[lang])
+        self.current_token = self.lexer.get_next_token()
 
     def expr(self):
-        """expr -> INTEGER OPERATOR INTEGER"""
+        """Arithmetic expressions parser
 
-        self.current_token = self.get_next_token()
+           expr: term ((plus|minus) term)*
+           term: staple ((mult|div) staple)*
+           staple: factor|expr
+           factor: INTEGER
+           plus: OPERATOR
+           minus: OPERATOR
+           mult: OPERATOR
+           div: OPERATOR"""
+
+        self.current_token = self.lexer.get_next_token()
 
         result = self.term()
 
         while self.current_token.type != EOF:
-            op = self.current_token
-            self.eat(OPERATOR)
+            if self.current_token.type not in (OPERATOR, BRACKET_RIGHT):
+                error(INVALID_SYNTAX[lang])
 
-            right = self.term()
-            match op.value:
+            match self.current_token.value:
+                case ')':
+                    self.eat(BRACKET_RIGHT)
+                    break
                 case '+':
-                    result += right
+                    self.eat(OPERATOR)
+                    result += self.term()
                 case '-':
-                    result -= right
-                case '*':
-                    result *= right
-                case '/':
-                    if right == 0:
-                        self.error(DIVIDING_BY_ZERO[lang])
-                    result /= right
+                    self.eat(OPERATOR)
+                    result -= self.term()
 
         return result
+
+
+def error(e):
+    raise Exception(e)
 
 
 def main():
@@ -110,7 +162,7 @@ def main():
             break
         if not text:
             continue
-        interpreter = Interpreter(text)
+        lexer = Lexer(text)
+        interpreter = Interpreter(lexer)
         result = interpreter.expr()
         print(result)
-
