@@ -76,37 +76,32 @@ class Lexer(object):
 class Interpreter(object):
     def __init__(self, lexer):
         self.lexer = lexer
-        self.current_token = None
+        self.current_token = self.lexer.get_next_token()
 
     def factor(self):
-        result = self.current_token
-        self.eat(INTEGER)
-        return result.value
-
-    def staple(self):
-        """staple: factor|expr"""
-
+        """factor: INTEGER|BRACKET_LEFT expr BRACKET_RIGHT"""
         if self.current_token.type == BRACKET_LEFT:
+            self.eat(BRACKET_LEFT)
             result = self.expr()
+            self.eat(BRACKET_RIGHT)
         else:
-            result = self.factor()
+            result = self.current_token.value
+            self.eat(INTEGER)
 
         return result
 
     def term(self):
         """term: factor ((mult|div factor))*"""
 
-        result = self.staple()
+        result = self.factor()
         while self.current_token.value in ('*', '/'):
-            op = self.current_token
-            self.eat(OPERATOR)
-
-            right = self.staple()
-            match op.value:
+            match self.current_token:
                 case '*':
-                    result *= right
+                    self.eat(OPERATOR)
+                    result *= self.factor()
                 case '/':
-                    result /= right
+                    self.eat(OPERATOR)
+                    result /= self.factor()
                     if result == int(result):
                         result = int(result)
         return result
@@ -120,32 +115,27 @@ class Interpreter(object):
         """Arithmetic expressions parser
 
            expr: term ((plus|minus) term)*
-           term: staple ((mult|div) staple)*
-           staple: factor|expr
-           factor: INTEGER
+           term: factor ((mult|div) factor)*
+           factor: INTEGER|BRACKET_LEFT expr BRACKET_RIGHT
            plus: OPERATOR
            minus: OPERATOR
            mult: OPERATOR
            div: OPERATOR"""
 
-        self.current_token = self.lexer.get_next_token()
-
         result = self.term()
 
         while self.current_token.type != EOF:
-            if self.current_token.type not in (OPERATOR, BRACKET_RIGHT):
-                error(INVALID_SYNTAX[lang])
-
             match self.current_token.value:
                 case ')':
-                    self.eat(BRACKET_RIGHT)
-                    break
+                    return result
                 case '+':
                     self.eat(OPERATOR)
                     result += self.term()
                 case '-':
                     self.eat(OPERATOR)
                     result -= self.term()
+                case _:
+                    error(INVALID_SYNTAX[lang])
 
         return result
 
