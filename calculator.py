@@ -10,6 +10,23 @@ OPERATORS = ('+', '-', '*', '/')
 lang = 'en'
 
 
+class AST(object):
+    pass
+
+
+class BinOp(AST):
+    def __init__(self, left, op, right):
+        self.left = left
+        self.token = self.op = op
+        self.right = right
+
+
+class Num(AST):
+    def __init__(self, token):
+        self.token = token
+        self.value = token.value
+
+
 class Token(object):
     def __init__(self, type, value):
         self.type = type
@@ -73,38 +90,33 @@ class Lexer(object):
         return Token(EOF, None)
 
 
-class Interpreter(object):
+class Parser(object):
     def __init__(self, lexer):
         self.lexer = lexer
         self.current_token = self.lexer.get_next_token()
 
     def factor(self):
         """factor: INTEGER|BRACKET_LEFT expr BRACKET_RIGHT"""
+        token = self.current_token
         if self.current_token.type == BRACKET_LEFT:
             self.eat(BRACKET_LEFT)
-            result = self.expr()
+            node = self.expr()
             self.eat(BRACKET_RIGHT)
+            return node
         else:
-            result = self.current_token.value
             self.eat(INTEGER)
-
-        return result
+            return Num(token)
 
     def term(self):
         """term: factor ((mult|div factor))*"""
 
-        result = self.factor()
+        node = self.factor()
         while self.current_token.value in ('*', '/'):
-            match self.current_token:
-                case '*':
-                    self.eat(OPERATOR)
-                    result *= self.factor()
-                case '/':
-                    self.eat(OPERATOR)
-                    result /= self.factor()
-                    if result == int(result):
-                        result = int(result)
-        return result
+            token = self.current_token
+            self.eat(OPERATOR)
+            node = BinOp(left=node, op=token, right=self.factor())
+
+        return node
 
     def eat(self, token_type):
         if self.current_token.type != token_type:
@@ -122,22 +134,55 @@ class Interpreter(object):
            mult: OPERATOR
            div: OPERATOR"""
 
-        result = self.term()
+        node = self.term()
 
         while self.current_token.type != EOF:
-            match self.current_token.value:
-                case ')':
-                    return result
-                case '+':
-                    self.eat(OPERATOR)
-                    result += self.term()
-                case '-':
-                    self.eat(OPERATOR)
-                    result -= self.term()
-                case _:
-                    error(INVALID_SYNTAX[lang])
+            token = self.current_token
+            if token.type == BRACKET_RIGHT:
+                return node
+            self.eat(OPERATOR)
+            node = BinOp(left=node, op=token, right=self.term())
 
-        return result
+        return node
+
+    def parse(self):
+        return self.expr()
+
+
+class NodeVisitor(object):
+    def visit(self, node):
+        method_name = 'visit_' + type(node).__name__
+        visitor = getattr(self, method_name, self.default_visit)
+        return visitor(node)
+
+    def default_visit(self, node):
+        raise Exception(f'visit_{type(node).__name__} is not defined')
+
+
+class Interpreter(NodeVisitor):
+    def __init__(self, parser):
+        self.parser = parser
+
+    def visit_BinOp(self, node):
+        match node.op.value:
+            case '+':
+                return self.visit(node.left) + self.visit(node.right)
+            case '-':
+                return self.visit(node.left) - self.visit(node.right)
+            case '*':
+                return self.visit(node.left) * self.visit(node.right)
+            case '/':
+                result = self.visit(node.left) / self.visit(node.right)
+                if result == int(result):
+                    result = int(result)
+                return result
+
+    def visit_Num(self, node):
+        return node.value
+
+    def interpret(self):
+        tree = self.parser.parse()
+        return self.visit(tree)
 
 
 def error(e):
@@ -153,6 +198,7 @@ def main():
         if not text:
             continue
         lexer = Lexer(text)
-        interpreter = Interpreter(lexer)
-        result = interpreter.expr()
+        parser = Parser(lexer)
+        interpreter = Interpreter(parser)
+        result = interpreter.interpret()
         print(result)
