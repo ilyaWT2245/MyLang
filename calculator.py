@@ -1,42 +1,17 @@
 from errors import *
 
+# Language
+lang = 'en'
+
+#########
+# Lexer #
+#########
+
 # TOKENS
 INTEGER, OPERATOR, EOF, SPACE = 'INTEGER', 'OPERATOR', 'EOF', 'SPACE'
 BRACKET_LEFT, BRACKET_RIGHT = 'BRACKET_LEFT', 'BRACKET_RIGHT'
 
 OPERATORS = ('+', '-', '*', '/')
-
-# Language
-lang = 'en'
-
-
-class AST(object):
-    pass
-
-
-class BinOp(AST):
-    def __init__(self, left, op, right):
-        self.left = left
-        self.token = self.op = op
-        self.right = right
-
-
-class Num(AST):
-    def __init__(self, token):
-        self.token = token
-        self.value = token.value
-
-
-class Token(object):
-    def __init__(self, type, value):
-        self.type = type
-        self.value = value
-
-    def __str__(self):
-        return f'Token({self.type}, {repr(self.value)})'
-
-    def __repr__(self):
-        return self.__str__()
 
 
 class Lexer(object):
@@ -88,6 +63,39 @@ class Lexer(object):
             error(INVALID_CHAR[lang])
 
         return Token(EOF, None)
+
+##########
+# Parser #
+##########
+
+
+class AST(object):
+    pass
+
+
+class BinOp(AST):
+    def __init__(self, left, op, right):
+        self.left = left
+        self.token = self.op = op
+        self.right = right
+
+
+class Num(AST):
+    def __init__(self, token):
+        self.token = token
+        self.value = token.value
+
+
+class Token(object):
+    def __init__(self, type, value):
+        self.type = type
+        self.value = value
+
+    def __str__(self):
+        return f'Token({self.type}, {repr(self.value)})'
+
+    def __repr__(self):
+        return self.__str__()
 
 
 class Parser(object):
@@ -148,6 +156,10 @@ class Parser(object):
     def parse(self):
         return self.expr()
 
+###############
+# Interpreter #
+###############
+
 
 class NodeVisitor(object):
     def visit(self, node):
@@ -200,5 +212,6 @@ def main():
         lexer = Lexer(text)
         parser = Parser(lexer)
         interpreter = Interpreter(parser)
-        result = interpreter.interpret()
-        print(result)
+
+        print(interpreter.interpret())
+
