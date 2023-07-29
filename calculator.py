@@ -80,6 +80,12 @@ class BinOp(AST):
         self.right = right
 
 
+class UnOp(AST):
+    def __init__(self, op, expr):
+        self.token = self.op = op
+        self.expr = expr
+
+
 class Num(AST):
     def __init__(self, token):
         self.token = token
@@ -104,13 +110,18 @@ class Parser(object):
         self.current_token = self.lexer.get_next_token()
 
     def factor(self):
-        """factor: INTEGER|BRACKET_LEFT expr BRACKET_RIGHT"""
+        """factor: (plus|minus)factor | INTEGER | BRACKET_LEFT expr BRACKET_RIGHT"""
         token = self.current_token
-        if self.current_token.type == BRACKET_LEFT:
+        if token.type == BRACKET_LEFT:
             self.eat(BRACKET_LEFT)
             node = self.expr()
             self.eat(BRACKET_RIGHT)
             return node
+
+        elif token.value in ('+', '-'):
+            self.eat(OPERATOR)
+            return UnOp(token, self.factor())
+
         else:
             self.eat(INTEGER)
             return Num(token)
@@ -136,7 +147,7 @@ class Parser(object):
 
            expr: term ((plus|minus) term)*
            term: factor ((mult|div) factor)*
-           factor: INTEGER|BRACKET_LEFT expr BRACKET_RIGHT
+           factor: (plus|minus)factor | INTEGER | BRACKET_LEFT expr BRACKET_RIGHT
            plus: OPERATOR
            minus: OPERATOR
            mult: OPERATOR
@@ -191,6 +202,12 @@ class Interpreter(NodeVisitor):
 
     def visit_Num(self, node):
         return node.value
+
+    def visit_UnOp(self, node):
+        if node.op.value == '+':
+            return +self.visit(node.expr)
+        elif node.op.value == '-':
+            return -self.visit(node.expr)
 
     def interpret(self):
         tree = self.parser.parse()
