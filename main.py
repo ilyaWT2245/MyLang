@@ -1,4 +1,4 @@
-import calculator
+import LPI
 import translators
 
 if __name__ == '__main__':
@@ -9,5 +9,5 @@ if __name__ == '__main__':
     to activate translator
     '''
 
-    calculator.main()
+    LPI.main()
     # translators.main()

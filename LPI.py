@@ -7,9 +7,10 @@ lang = 'en'
 # Lexer #
 #########
 
-# TOKENS
+# Tokens
 INTEGER, OPERATOR, EOF, SPACE = 'INTEGER', 'OPERATOR', 'EOF', 'SPACE'
 BRACKET_LEFT, BRACKET_RIGHT = 'BRACKET_LEFT', 'BRACKET_RIGHT'
+BEGIN, END, SEMI, ID, DOT, ASSIGN = 'BEGIN', 'END', 'SEMI', 'ID', 'DOT', 'ASSIGN'
 
 OPERATORS = ('+', '-', '*', '/')
 
@@ -19,6 +20,10 @@ class Lexer(object):
         self.text = text
         self.pos = 0
         self.current_char = self.text[self.pos]
+        self.RESERVED_KEYWORDS = {
+            'BEGIN': Token(BEGIN, 'BEGIN'),
+            'END': Token(END, 'END')
+        }
 
     def advance(self):
         self.pos += 1
@@ -37,6 +42,21 @@ class Lexer(object):
             result += self.current_char
             self.advance()
         return int(result)
+
+    def _id(self):
+        result = ''
+        while self.current_char is not None and self.current_char.isalnum():
+            result += self.current_char
+            self.advance()
+
+        return self.RESERVED_KEYWORDS.get(result, Token(ID, result))
+
+    def see_next_char(self):
+        pos = self.pos + 1
+        if pos > len(self.text) + 1:
+            return None
+        else:
+            return self.text[pos]
 
     def get_next_token(self):
         while self.current_char is not None:
@@ -59,6 +79,22 @@ class Lexer(object):
             if self.current_char == ')':
                 self.advance()
                 return Token(BRACKET_RIGHT, ')')
+
+            if self.current_char.isalpha():
+                return self._id()
+
+            if self.current_char == ':' and self.see_next_char() == '=':
+                self.advance()
+                self.advance()
+                return Token(ASSIGN, ':=')
+
+            if self.current_char == ';':
+                self.advance()
+                return Token(SEMI, ';')
+
+            if self.current_char == '.':
+                self.advance()
+                return Token(DOT, '.')
 
             error(INVALID_CHAR[lang])
 
@@ -92,6 +128,28 @@ class Num(AST):
         self.value = token.value
 
 
+class Compound(AST):
+    def __init__(self):
+        self.children = []
+
+
+class AssignOp(AST):
+    def __init__(self, left, op, right):
+        self.left = left
+        self.token = self.op = op
+        self.right = right
+
+
+class Var(AST):
+    def __init__(self, token):
+        self.token = token
+        self.value = token.value
+
+
+class NoOp(AST):
+    pass
+
+
 class Token(object):
     def __init__(self, type, value):
         self.type = type
@@ -110,7 +168,12 @@ class Parser(object):
         self.current_token = self.lexer.get_next_token()
 
     def factor(self):
-        """factor: (plus|minus)factor | INTEGER | BRACKET_LEFT expr BRACKET_RIGHT"""
+        """factor: (plus|minus) factor
+                 | INTEGER
+                 | BRACKET_LEFT expr BRACKET_RIGHT
+                 | variable
+        """
+
         token = self.current_token
         if token.type == BRACKET_LEFT:
             self.eat(BRACKET_LEFT)
@@ -122,9 +185,11 @@ class Parser(object):
             self.eat(OPERATOR)
             return UnOp(token, self.factor())
 
-        else:
+        elif token.type == INTEGER:
             self.eat(INTEGER)
             return Num(token)
+        else:
+            return self.variable()
 
     def term(self):
         """term: factor ((mult|div factor))*"""
@@ -147,7 +212,10 @@ class Parser(object):
 
            expr: term ((plus|minus) term)*
            term: factor ((mult|div) factor)*
-           factor: (plus|minus)factor | INTEGER | BRACKET_LEFT expr BRACKET_RIGHT
+           factor: (plus|minus) factor
+                 | INTEGER
+                 | BRACKET_LEFT expr BRACKET_RIGHT
+                 | variable
            plus: OPERATOR
            minus: OPERATOR
            mult: OPERATOR
@@ -155,17 +223,94 @@ class Parser(object):
 
         node = self.term()
 
-        while self.current_token.type != EOF:
+        while self.current_token.value in ('+', '-'):
             token = self.current_token
-            if token.type == BRACKET_RIGHT:
-                return node
             self.eat(OPERATOR)
             node = BinOp(left=node, op=token, right=self.term())
 
+        if self.current_token.type == INTEGER:
+            error(INVALID_SYNTAX[lang])
+
+        return node
+
+    def variable(self):
+        """variable: ID"""
+
+        token = self.current_token
+        self.eat(ID)
+        return Var(token)
+
+    def empty(self):
+        return NoOp()
+
+    def assignment_statement(self):
+        """assignment_statement: variable ASSIGN expr"""
+        left = self.variable()
+        token = self.current_token
+        self.eat(ASSIGN)
+        right = self.expr()
+        return AssignOp(left=left, op=token, right=right)
+
+    def statement(self):
+        """statement: compound_statement
+                    | assignment_statement
+                    | empty
+        """
+
+        if self.current_token.type == BEGIN:
+            node = self.compound_statement()
+        elif self.current_token.type == ID:
+            node = self.assignment_statement()
+        else:
+            node = self.empty()
+
+        return node
+
+    def statements_list(self):
+        """statements_list: statement (SEMI statement)*"""
+
+        node = self.statement()
+        nodes = [node]
+        while self.current_token.type == SEMI:
+            self.eat(SEMI)
+            nodes.append(self.statement())
+
+        return nodes
+
+    def compound_statement(self):
+        """compound_statement: BEGIN statements_list END"""
+
+        self.eat(BEGIN)
+        nodes = self.statements_list()
+        self.eat(END)
+
+        root = Compound()
+        for node in nodes:
+            root.children.append(node)
+
+        return root
+
+    def program(self):
+        """program: compound_statement DOT
+           compound_statement: BEGIN statements_list END
+           statements_list: statement (SEMI statement)*
+           statement: compound_statement
+                    | assignment_statement
+                    | empty
+           assignment_statement: variable ASSIGN expr
+           variable: ID
+           empty:
+        """
+
+        node = self.compound_statement()
+        self.eat(DOT)
         return node
 
     def parse(self):
-        return self.expr()
+        node = self.program()
+        if self.current_token.type != EOF:
+            error(INVALID_SYNTAX[lang])
+        return node
 
 ###############
 # Interpreter #
@@ -185,6 +330,7 @@ class NodeVisitor(object):
 class Interpreter(NodeVisitor):
     def __init__(self, parser):
         self.parser = parser
+        self.GLOBAL_SCOPE = {}
 
     def visit_BinOp(self, node):
         match node.op.value:
@@ -209,6 +355,26 @@ class Interpreter(NodeVisitor):
         elif node.op.value == '-':
             return -self.visit(node.expr)
 
+    def visit_Compound(self, node):
+        for n in node.children:
+            self.visit(n)
+
+    def visit_AssignOp(self, node):
+        var = node.left.value
+        value = self.visit(node.right)
+        self.GLOBAL_SCOPE[var] = value
+
+    def visit_Var(self, node):
+        name = node.value
+        value = self.GLOBAL_SCOPE.get(name, None)
+        if value is None:
+            raise NameError(repr(name))
+        else:
+            return value
+
+    def visit_NoOp(self, node):
+        return None
+
     def interpret(self):
         tree = self.parser.parse()
         return self.visit(tree)
@@ -229,6 +395,5 @@ def main():
         lexer = Lexer(text)
         parser = Parser(lexer)
         interpreter = Interpreter(parser)
-
         print(interpreter.interpret())
 

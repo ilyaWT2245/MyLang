@@ -1,4 +1,4 @@
-from calculator import Lexer, Parser, NodeVisitor
+from LPI import Lexer, Parser, NodeVisitor
 
 
 ##################
