@@ -21,8 +21,8 @@ class Lexer(object):
         self.pos = 0
         self.current_char = self.text[self.pos]
         self.RESERVED_KEYWORDS = {
-            'BEGIN': Token(BEGIN, 'BEGIN'),
-            'END': Token(END, 'END'),
+            'begin': Token(BEGIN, 'BEGIN'),
+            'end': Token(END, 'END'),
             'div': Token(OPERATOR, '/')
         }
 
@@ -46,10 +46,11 @@ class Lexer(object):
 
     def _id(self):
         result = ''
-        while self.current_char is not None and self.current_char.isalnum():
+        while self.current_char is not None and self.current_char.isalnum() or self.current_char == '_':
             result += self.current_char
             self.advance()
 
+        result = result.lower()
         return self.RESERVED_KEYWORDS.get(result, Token(ID, result))
 
     def see_next_char(self):
@@ -81,7 +82,7 @@ class Lexer(object):
                 self.advance()
                 return Token(BRACKET_RIGHT, ')')
 
-            if self.current_char.isalpha():
+            if self.current_char.isalpha() or self.current_char == '_':
                 return self._id()
 
             if self.current_char == ':' and self.see_next_char() == '=':
@@ -398,4 +399,3 @@ def main():
         interpreter = Interpreter(parser)
         interpreter.interpret()
         print(interpreter.GLOBAL_SCOPE)
-
