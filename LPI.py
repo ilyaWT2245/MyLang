@@ -12,7 +12,7 @@ INTEGER, OPERATOR, EOF, SPACE = 'INTEGER', 'OPERATOR', 'EOF', 'SPACE'
 BRACKET_LEFT, BRACKET_RIGHT = 'BRACKET_LEFT', 'BRACKET_RIGHT'
 BEGIN, END, SEMI, ID, DOT, ASSIGN = 'BEGIN', 'END', 'SEMI', 'ID', 'DOT', 'ASSIGN'
 
-OPERATORS = ('+', '-', '*', '/')
+OPERATORS = ('+', '-', '*')
 
 
 class Lexer(object):
@@ -22,7 +22,8 @@ class Lexer(object):
         self.current_char = self.text[self.pos]
         self.RESERVED_KEYWORDS = {
             'BEGIN': Token(BEGIN, 'BEGIN'),
-            'END': Token(END, 'END')
+            'END': Token(END, 'END'),
+            'div': Token(OPERATOR, '/')
         }
 
     def advance(self):
@@ -395,5 +396,6 @@ def main():
         lexer = Lexer(text)
         parser = Parser(lexer)
         interpreter = Interpreter(parser)
-        print(interpreter.interpret())
+        interpreter.interpret()
+        print(interpreter.GLOBAL_SCOPE)
 
