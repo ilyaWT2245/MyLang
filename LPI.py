@@ -1,4 +1,5 @@
 from errors import *
+from collections import OrderedDict
 
 # Language
 lang = 'en'
@@ -15,6 +16,55 @@ PROGRAM, VAR, INTEGER, REAL = 'PROGRAM', 'VAR', 'INTEGER', 'REAL'
 COLON, COMMA = 'COLON', 'COMMA'
 
 OPERATORS = ('+', '-', '*', '/')
+
+
+class Symbol(object):
+    def __init__(self, name, type=None):
+        self.name = name
+        self.type = type
+
+
+class BuiltInSymbol(Symbol):
+    def __init__(self, name):
+        super().__init__(name)
+
+    def __str__(self):
+        return self.name
+
+    __repr__ = __str__
+
+
+class VarSymbol(Symbol):
+    def __init__(self, name, type):
+        super().__init__(name, type)
+
+    def __str__(self):
+        return f'<{self.name}:{self.type}>'
+
+    __repr__ = __str__
+
+
+class SymbolTable(object):
+    def __init__(self):
+        self._symbols = OrderedDict()
+        self.init_builtins()
+
+    def init_builtins(self):
+        self.define(BuiltInSymbol(INTEGER))
+        self.define(BuiltInSymbol(REAL))
+
+    def __str__(self):
+        return f'Symbols: {[value for value in self._symbols.values()]}'
+
+    __repr__ = __str__
+
+    def define(self, symbol):
+        print('Define: %s' % symbol)
+        self._symbols[symbol.name] = symbol
+
+    def lookup(self, name):
+        print('Lookup: %s' % name)
+        return self._symbols.get(name)
 
 
 class Lexer(object):
@@ -535,6 +585,55 @@ class Interpreter(NodeVisitor):
         return self.visit(tree)
 
 
+class SymbolTableBuilder(NodeVisitor):
+    def __init__(self):
+        self.symbol_table = SymbolTable()
+
+    def visit_BinOp(self, node):
+        self.visit(node.left)
+        self.visit(node.right)
+
+    def visit_Num(self, node):
+        pass
+
+    def visit_UnOp(self, node):
+        self.visit(node.expr)
+
+    def visit_Compound(self, node):
+        for n in node.children:
+            self.visit(n)
+
+    def visit_AssignOp(self, node):
+        var_name = node.left.value
+        if self.symbol_table.lookup(var_name) is None:
+            raise NameError(repr(var_name))
+        self.visit(node.right)
+
+    def visit_Var(self, node):
+        var_name = node.value
+        if self.symbol_table.lookup(var_name) is None:
+            raise NameError(repr(var_name))
+
+    def visit_Program(self, node):
+        self.visit(node.block)
+
+    def visit_Block(self, node):
+        for decl_node in node.declarations:
+            self.visit(decl_node)
+        self.visit(node.compound_statement)
+
+    def visit_VarDecl(self, node):
+        name = node.var_node.value
+        type = self.symbol_table.lookup(node.type_node.value)
+        self.symbol_table.define(VarSymbol(name, type))
+
+    def visit_Type(self, node):
+        return None
+
+    def visit_NoOp(self, node):
+        return None
+
+
 def error(e):
     raise Exception(e)
 
@@ -550,5 +649,13 @@ def main():
         lexer = Lexer(text)
         parser = Parser(lexer)
         interpreter = Interpreter(parser)
-        interpreter.interpret()
-        print(interpreter.GLOBAL_SCOPE)
+        symtab = SymbolTableBuilder()
+        tree = parser.parse()
+        symtab.visit(tree)
+        print()
+        print(symtab.symbol_table)
+        print()
+        interpreter.visit(tree)
+        print('GLOBAL_SCOPE: ')
+        for k, v in sorted(interpreter.GLOBAL_SCOPE.items()):
+            print(f'{k} = {v}')
