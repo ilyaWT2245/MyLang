@@ -1,4 +1,5 @@
 from errors import *
+from tokens import *
 from collections import OrderedDict
 
 # Language
@@ -7,13 +8,6 @@ lang = 'en'
 #########
 # Lexer #
 #########
-
-# Tokens
-INTEGER_CONST, REAL_CONST, OPERATOR, EOF, SPACE = 'INTEGER_CONST', 'REAL_CONST', 'OPERATOR', 'EOF', 'SPACE'
-BRACKET_LEFT, BRACKET_RIGHT = 'BRACKET_LEFT', 'BRACKET_RIGHT'
-BEGIN, END, SEMI, ID, DOT, ASSIGN = 'BEGIN', 'END', 'SEMI', 'ID', 'DOT', 'ASSIGN'
-PROGRAM, VAR, INTEGER, REAL = 'PROGRAM', 'VAR', 'INTEGER', 'REAL'
-COLON, COMMA = 'COLON', 'COMMA'
 
 OPERATORS = ('+', '-', '*', '/')
 
@@ -29,9 +23,10 @@ class BuiltInSymbol(Symbol):
         super().__init__(name)
 
     def __str__(self):
-        return self.name
+        return f'name={self.name}'
 
-    __repr__ = __str__
+    def __repr__(self):
+        return f'<{self.__class__.__name__}({self.__str__()})>'
 
 
 class VarSymbol(Symbol):
@@ -39,9 +34,10 @@ class VarSymbol(Symbol):
         super().__init__(name, type)
 
     def __str__(self):
-        return f'<{self.name}:{self.type}>'
+        return f'name={self.name}, type={self.type}'
 
-    __repr__ = __str__
+    def __repr__(self):
+        return f'<{self.__class__.__name__}({self.__str__()})>'
 
 
 class SymbolTable(object):
@@ -79,7 +75,8 @@ class Lexer(object):
             'program': Token(PROGRAM, 'PROGRAM'),
             'var': Token(VAR, 'VAR'),
             'integer': Token(INTEGER, 'INTEGER'),
-            'real': Token(REAL, 'REAL')
+            'real': Token(REAL, 'REAL'),
+            'procedure': Token(PROCEDURE, 'PROCEDURE')
         }
 
     def advance(self):
@@ -247,6 +244,12 @@ class Block(AST):
     def __init__(self, var_decl, compound_statement):
         self.declarations = var_decl
         self.compound_statement = compound_statement
+
+
+class ProcedureDecl(AST):
+    def __init__(self, name, block):
+        self.name = name
+        self.block = block
 
 
 class VarDecl(AST):
@@ -434,6 +437,7 @@ class Parser(object):
 
     def declarations(self):
         """declarations: VAR (variable_declaration SEMI)+
+                       | (PROCEDURE ID SEMI block SEMI)*
                        | empty"""
 
         declarations = []
@@ -442,6 +446,15 @@ class Parser(object):
             while self.current_token.type == ID:
                 declarations.extend(self.variable_declaration())
                 self.eat(SEMI)
+
+        while self.current_token.type == PROCEDURE:
+            self.eat(PROCEDURE)
+            procedure_name = self.current_token.value
+            self.eat(ID)
+            self.eat(SEMI)
+            block_node = self.block()
+            declarations.append(ProcedureDecl(procedure_name, block_node))
+            self.eat(SEMI)
 
         return declarations
 
@@ -458,6 +471,7 @@ class Parser(object):
            block: declarations compound_statement
 
            declarations: VAR (variable_declaration SEMI)+
+                       | (PROCEDURE ID SEMI block SEMI)*
                        | empty
 
            variable_declaration: ID (COMMA ID)* COLON type
@@ -571,6 +585,9 @@ class Interpreter(NodeVisitor):
             self.visit(decl_node)
         self.visit(node.compound_statement)
 
+    def visit_ProcedureDecl(self, node):
+        pass
+
     def visit_VarDecl(self, node):
         return None
 
@@ -622,9 +639,14 @@ class SymbolTableBuilder(NodeVisitor):
             self.visit(decl_node)
         self.visit(node.compound_statement)
 
+    def visit_ProcedureDecl(self, node):
+        pass
+
     def visit_VarDecl(self, node):
         name = node.var_node.value
         type = self.symbol_table.lookup(node.type_node.value)
+        if self.symbol_table.lookup(name) is not None:
+            error(DUPLICATE_DECLARATION[lang])
         self.symbol_table.define(VarSymbol(name, type))
 
     def visit_Type(self, node):
